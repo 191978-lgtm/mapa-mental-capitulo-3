@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa Conceptual - Cap. 3: Administracion de Memoria | Tanenbaum</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, sans-serif;
+    overflow: hidden;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+
+  /* ===== HEADER ===== */
+  .header {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    padding: 14px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+    position: relative;
+    z-index: 100;
+  }
+
+  .header-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .header h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: #f1f5f9;
+    letter-spacing: -0.3px;
+  }
+
+  .header-subtitle {
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 400;
+  }
+
+  .header-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* ===== BOTONES ===== */
+  .btn {
+    padding: 7px 14px;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 0.2px;
+  }
+
+  .btn:active { transform: scale(0.96); }
+
+  .btn-primary {
+    background: #6366f1;
+    color: white;
+  }
+  .btn-primary:hover { background: #818cf8; }
+
+  .btn-secondary {
+    background: rgba(99, 102, 241, 0.15);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+  }
+  .btn-secondary:hover { background: rgba(99, 102, 241, 0.25); }
+
+  .btn-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .btn-danger:hover { background: rgba(239, 68, 68, 0.25); }
+
+  /* ===== CONTENEDOR DEL GRAFO ===== */
+  #graph-container {
+    width: 100vw;
+    height: calc(100vh - 56px);
+    cursor: grab;
+    position: relative;
+    background:
+      radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.04) 0%, transparent 50%),
+      radial-gradient(circle at 80% 50%, rgba(16, 185, 129, 0.04) 0%, transparent 50%);
+  }
+
+  #graph-container.grabbing { cursor: grabbing; }
+
+  /* ===== BUSCADOR ===== */
+  .search-container {
+    position: absolute;
+    top: 72px;
+    left: 20px;
+    z-index: 1000;
+  }
+
+  .search-input {
+    width: 280px;
+    padding: 10px 14px 10px 36px;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 10px;
+    font-size: 13px;
+    background: rgba(30, 41, 59, 0.95);
+    color: #e2e8f0;
+    backdrop-filter: blur(12px);
+    outline: none;
+    transition: all 0.25s ease;
+  }
+
+  .search-input::placeholder { color: #64748b; }
+
+  .search-input:focus {
+    width: 320px;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 11px;
+    color: #64748b;
+    font-size: 14px;
+    pointer-events: none;
+  }
+
+  .search-results {
+    margin-top: 6px;
+    background: rgba(30, 41, 59, 0.97);
+    border-radius: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    display: none;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    backdrop-filter: blur(12px);
+  }
+
+  .search-results.visible { display: block; }
+
+  .search-result-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.08);
+    transition: background 0.15s;
+    font-size: 13px;
+  }
+
+  .search-result-item:hover { background: rgba(99, 102, 241, 0.1); }
+  .search-result-item:last-child { border-bottom: none; }
+
+  .search-results::-webkit-scrollbar { width: 5px; }
+  .search-results::-webkit-scrollbar-track { background: transparent; }
+  .search-results::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+
+  /* ===== TOOLTIP ===== */
+  .tooltip {
+    position: absolute;
+    background: rgba(30, 41, 59, 0.97);
+    padding: 14px 18px;
+    border-radius: 10px;
+    pointer-events: none;
+    opacity: 0;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    max-width: 340px;
+    font-size: 12px;
+    line-height: 1.6;
+    transition: opacity 0.15s;
+    border-left: 3px solid #6366f1;
+    backdrop-filter: blur(12px);
+    z-index: 2000;
+    color: #cbd5e1;
+  }
+
+  .tooltip b {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #f1f5f9;
+  }
+
+  /* ===== NODOS SVG ===== */
+  .node {
+    cursor: pointer;
+    transition: filter 0.2s;
+  }
+
+  .node:hover {
+    filter: brightness(1.15) drop-shadow(0 0 8px rgba(99, 102, 241, 0.4));
+  }
+
+  .node.pinned {
+    stroke-dasharray: 4 2;
+  }
+
+  .node-label {
+    font-size: 11px;
+    font-weight: 600;
+    pointer-events: none;
+    fill: #e2e8f0;
+    text-shadow: 0 0 6px rgba(15,23,42,0.9), 0 0 12px rgba(15,23,42,0.7);
+    letter-spacing: 0.1px;
+  }
+
+  /* ===== ENLACES ===== */
+  .link { transition: all 0.3s ease; }
+
+  .link-hitarea {
+    stroke: transparent;
+    stroke-width: 14;
+    cursor: pointer;
+    fill: none;
+  }
+
+  .link-label {
+    font-size: 9px;
+    fill: #facc15;
+    font-weight: 700;
+    pointer-events: none;
+    text-shadow: 0 0 6px rgba(15,23,42,0.9), 0 0 10px rgba(15,23,42,0.7);
+    transition: all 0.3s;
+  }
+
+  .link-label.selected {
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    fill: #fde047 !important;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+  .link.selected { animation: pulse 1.5s ease-in-out infinite; }
+
+  /* ===== INDICADOR DE SELECCION ===== */
+  .selection-indicator {
+    position: absolute;
+    bottom: 190px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(99, 102, 241, 0.9);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+    z-index: 1000;
+    max-width: 80%;
+    text-align: center;
+    backdrop-filter: blur(8px);
+  }
+
+  .selection-indicator.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-8px);
+  }
+
+  /* ===== CONTROLES DE NAVEGACION ===== */
+  .nav-controls {
+    position: absolute;
+    top: 72px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 1000;
+  }
+
+  .nav-btn {
+    width: 38px;
+    height: 38px;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: 10px;
+    background: rgba(30, 41, 59, 0.9);
+    color: #a5b4fc;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    backdrop-filter: blur(8px);
+  }
+
+  .nav-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: #6366f1;
+  }
+
+  /* ===== LEYENDA ===== */
+  .legend {
+    position: absolute;
+    top: 72px;
+    left: 320px;
+    background: rgba(30, 41, 59, 0.92);
+    padding: 14px 16px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    font-size: 12px;
+    z-index: 1000;
+    max-width: 200px;
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    backdrop-filter: blur(12px);
+  }
+
+  .legend h4 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0;
+    padding: 4px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .legend-item:hover { background: rgba(99, 102, 241, 0.1); }
+
+  .legend-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .legend-label { color: #cbd5e1; font-size: 12px; }
+
+  /* ===== INFO PANEL ===== */
+  .info-panel {
+    position: absolute;
+    top: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(30, 41, 59, 0.92);
+    padding: 10px 16px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    max-width: 520px;
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.5;
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    opacity: 1;
+    transition: opacity 0.4s;
+    z-index: 999;
+    backdrop-filter: blur(12px);
+  }
+
+  .info-panel.hidden { opacity: 0; pointer-events: none; }
+  .info-panel strong { color: #e2e8f0; }
+
+  /* ===== MODAL DE AYUDA ===== */
+  .help-modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease;
+    backdrop-filter: blur(4px);
+  }
+
+  .help-modal-content {
+    background: #1e293b;
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 580px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    position: relative;
+    animation: slideUp 0.3s ease-out;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+  }
+
+  .help-modal h2 {
+    margin: 0 0 20px 0;
+    color: #f1f5f9;
+    font-size: 22px;
+    text-align: center;
+  }
+
+  .help-modal h3 {
+    margin: 20px 0 10px;
+    color: #a5b4fc;
+    font-size: 15px;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+    padding-bottom: 8px;
+  }
+
+  .help-section { margin-bottom: 16px; }
+
+  .help-modal ul { list-style: none; padding: 0; }
+
+  .help-modal li {
+    padding: 7px 0;
+    color: #94a3b8;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.06);
+    font-size: 13px;
+  }
+
+  .help-modal li:last-child { border-bottom: none; }
+  .help-modal p { color: #94a3b8; line-height: 1.6; }
+
+  .close-modal {
+    position: absolute;
+    top: 14px; right: 18px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #64748b;
+    transition: color 0.2s;
+    width: 32px; height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+  }
+
+  .close-modal:hover { color: #f1f5f9; background: rgba(99, 102, 241, 0.15); }
+
+  .help-modal-content::-webkit-scrollbar { width: 5px; }
+  .help-modal-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+
+  /* ===== STATS PANEL ===== */
+  .stats-panel {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    background: rgba(30, 41, 59, 0.9);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 11px;
+    color: #64748b;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    z-index: 500;
+    line-height: 1.6;
+    backdrop-filter: blur(12px);
+  }
+
+  .stats-panel strong { color: #a5b4fc; font-weight: 600; }
+
+  /* ===== MINIMAPA ===== */
+  .minimap-container {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 180px;
+    height: 130px;
+    background: rgba(30, 41, 59, 0.9);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    overflow: hidden;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    z-index: 1000;
+    backdrop-filter: blur(12px);
+  }
+
+  .minimap-container svg { width: 100%; height: 100%; }
+
+  .minimap-viewport {
+    fill: rgba(99, 102, 241, 0.12);
+    stroke: #6366f1;
+    stroke-width: 1;
+    cursor: move;
+  }
+
+  /* ===== PIN ICON ===== */
+  .pin-icon { font-size: 10px; pointer-events: none; }
+  .start-icon {
+    font-size: 12px;
+    pointer-events: none;
+    fill: #fde047;
+    text-shadow: 0 0 6px rgba(15,23,42,0.9);
+  }
+  .legend-start {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(99, 102, 241, 0.15);
+    color: #e2e8f0;
+    font-size: 10px;
+    cursor: pointer;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+  }
+  .legend-start:hover {
+    background: rgba(99, 102, 241, 0.25);
+    border-color: #6366f1;
+  }
+
+  /* ===== ANIMACIONES ===== */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ===== REFERENCIA BIBLIOGRAFICA ===== */
+  .ref-badge {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 8px;
+    padding: 6px 16px;
+    font-size: 10px;
+    color: #64748b;
+    z-index: 500;
+    backdrop-filter: blur(8px);
+    text-align: center;
+  }
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <div class="header-title">
+    <h2>Mapa Conceptual: Administracion de Memoria</h2>
+    <span class="header-subtitle">Capitulo 3 &mdash; Sistemas Operativos, 3ra Ed. &mdash; Andrew S. Tanenbaum</span>
+  </div>
+  <div class="header-controls">
+    <button class="btn btn-secondary" onclick="autoOrganize()">Auto-organizar</button>
+    <button class="btn btn-primary" onclick="fitToScreen()">Ajustar vista</button>
+    <button class="btn btn-danger" onclick="clearSelection()">Deseleccionar</button>
+  </div>
+</div>
+
+<div class="search-container">
+  <span class="search-icon">&#128269;</span>
+  <input
+    type="text"
+    id="searchInput"
+    class="search-input"
+    placeholder="Buscar concepto (nombre o numero)..."
+    autocomplete="off"
+  />
+  <div class="search-results" id="searchResults"></div>
+</div>
+
+<div class="info-panel" id="infoPanel">
+  <strong>Interaccion:</strong> Doble-click para centrar &bull; Click para seleccionar &bull; Click-derecho para fijar &bull; Arrastra para mover &bull; Rueda para zoom &bull; Click en enlaces para destacar
+</div>
+
+<div class="legend" id="legend"></div>
+
+<div class="nav-controls">
+  <button class="nav-btn" onclick="adjustZoom(1.2)" title="Acercar">+</button>
+  <button class="nav-btn" onclick="adjustZoom(0.8)" title="Alejar">&minus;</button>
+  <button class="nav-btn" onclick="resetView()" title="Resetear" style="font-size: 16px;">&#8634;</button>
+  <button class="nav-btn" onclick="toggleHelpModal()" title="Ayuda">?</button>
+</div>
+
+<div id="helpModal" class="help-modal" style="display: none;">
+  <div class="help-modal-content">
+    <h2>Atajos y Funcionalidades</h2>
+    <button class="close-modal" onclick="toggleHelpModal()">&times;</button>
+
+    <div class="help-section">
+      <h3>Controles del Raton</h3>
+      <ul>
+        <li><strong>Click izquierdo</strong> en nodo &mdash; Seleccionar y ver info</li>
+        <li><strong>Doble click</strong> en nodo &mdash; Centrar y hacer zoom</li>
+        <li><strong>Click derecho</strong> en nodo &mdash; Fijar/Desfijar posicion</li>
+        <li><strong>Arrastrar</strong> nodo &mdash; Mover nodo</li>
+        <li><strong>Rueda del raton</strong> &mdash; Zoom in/out</li>
+        <li><strong>Click</strong> en enlace &mdash; Destacar relacion</li>
+      </ul>
+    </div>
+
+    <div class="help-section">
+      <h3>Controles de Teclado</h3>
+      <ul>
+        <li><strong>?</strong> &mdash; Mostrar/ocultar esta ayuda</li>
+        <li><strong>R</strong> &mdash; Reorganizar el grafo</li>
+        <li><strong>F</strong> &mdash; Ajustar vista al contenido</li>
+        <li><strong>Escape</strong> &mdash; Limpiar busqueda y seleccion</li>
+      </ul>
+    </div>
+
+    <div class="help-section">
+      <h3>Categorias</h3>
+      <p>Los nodos estan agrupados por categoria y diferenciados por color. Haz click en la leyenda para filtrar categorias.</p>
+    </div>
+
+    <div class="help-section">
+      <h3>Busqueda</h3>
+      <p>Escribe en el campo de busqueda para filtrar por nombre, numero o concepto. Presiona Enter para ir al primer resultado.</p>
+    </div>
+  </div>
+</div>
+
+<div id="selection-indicator" class="selection-indicator"></div>
+<div id="tooltip" class="tooltip"></div>
+
+<div class="stats-panel" id="statsPanel">
+  <div id="statsContent">Cargando...</div>
+</div>
+
+<div class="minimap-container">
+  <svg id="minimap"></svg>
+</div>
+
+<div id="graph-container"></div>
+
+<div class="ref-badge">
+  Basado en: <em>Sistemas Operativos &mdash; Diseno e Implementacion</em>, 3ra Ed. &mdash; Andrew S. Tanenbaum &amp; Albert S. Woodhull
+</div>
+
+<script>
+// ============================================================
+//  DATOS: 71 CONCEPTOS DEL CAPITULO 2 DE TANENBAUM
+// ============================================================
+const graph = {
+  nodes: [
+// --- VISION GENERAL (3.0) ---
+{id:"M0-AdmMemoria",label:"Adm. de Memoria",group:"general",concepto:"El SO administra la RAM como parte de una jerarquia de memoria (cache, RAM, disco). El administrador registra uso, asigna y libera memoria."},
+{id:"M1-JerarquiaMemoria",label:"1. Jerarquia de Memoria",group:"general",concepto:"Organizacion en niveles: cache, RAM, disco. Cada nivel balancea velocidad y capacidad."},
+{id:"M2-RAM",label:"2. RAM",group:"general",concepto:"Recurso critico que el SO debe administrar eficientemente entre multiples procesos."},
+{id:"M3-AdministradorMem",label:"3. Administrador de Memoria",group:"general",concepto:"Componente del SO que registra que esta en uso, asigna y libera memoria."},
+
+// --- SIN ABSTRACCION (3.1) ---
+{id:"M4-SinAbstraccion",label:"4. Sin Abstraccion",group:"sinAbstraccion",concepto:"Sistemas donde cada programa ve la memoria fisica directamente, sin proteccion."},
+{id:"M5-MemoriaFisica",label:"5. Memoria Fisica",group:"sinAbstraccion",concepto:"Direcciones reales de hardware accedidas directamente por los programas."},
+{id:"M6-Corrupcion",label:"6. Corrupcion del SO",group:"sinAbstraccion",concepto:"Sin proteccion, un error de programa puede corromper al sistema operativo."},
+{id:"M7-UnProceso",label:"7. Un Proceso a la Vez",group:"sinAbstraccion",concepto:"El SO carga un programa, lo ejecuta y luego lo reemplaza por el siguiente."},
+{id:"M8-LlavesProteccion",label:"8. Llaves de Proteccion",group:"sinAbstraccion",concepto:"Ejemplo historico: IBM 360 con llaves de proteccion por bloques y trap si un proceso accede a memoria con llave distinta."},
+
+// --- ESPACIOS DE DIRECCIONES (3.2) ---
+{id:"M9-EspacioDirecciones",label:"9. Espacio de Direcciones",group:"espacios",concepto:"Conjunto privado de direcciones que cada proceso cree poseer, abstrayendo la memoria fisica."},
+{id:"M10-Proteccion",label:"10. Proteccion",group:"espacios",concepto:"Mecanismo para evitar que un proceso acceda a memoria de otro."},
+{id:"M11-Reubicacion",label:"11. Reubicacion",group:"espacios",concepto:"Capacidad de cargar un programa en cualquier posicion de memoria y ajustar sus direcciones."},
+{id:"M12-RegistroBase",label:"12. Registro Base",group:"espacios",concepto:"Direccion fisica donde inicia el proceso; se suma a cada direccion generada."},
+{id:"M13-RegistroLimite",label:"13. Registro Limite",group:"espacios",concepto:"Tamano maximo del proceso; la CPU valida que los accesos no excedan este limite."},
+{id:"M14-Swapping",label:"14. Swapping (Intercambio)",group:"espacios",concepto:"Tecnica donde procesos entran y salen de memoria; al volver pueden quedar en otra ubicacion."},
+{id:"M15-Compactacion",label:"15. Compactacion",group:"espacios",concepto:"Mover procesos para unir huecos libres; se evita por alto consumo de CPU."},
+{id:"M16-MapaBits",label:"16. Mapa de Bits",group:"espacios",concepto:"Memoria dividida en unidades con un bit cada una (0=libre, 1=ocupada). Trade-off entre tamano de unidad y desperdicio."},
+{id:"M17-ListasLibres",label:"17. Listas Libres/Ligadas",group:"espacios",concepto:"Lista de segmentos ocupados (P) y huecos (H) con direccion, longitud y puntero. Permite fusion de huecos."},
+{id:"M18-CrecimientoSegmentos",label:"18. Crecimiento de Segmentos",group:"espacios",concepto:"Si datos/pila crecen, se usa hueco contiguo, se mueve el proceso o se fuerza swapping."},
+
+// --- MEMORIA VIRTUAL (3.3) ---
+{id:"M19-MemoriaVirtual",label:"19. Memoria Virtual",group:"memVirtual",concepto:"Abstraccion que asocia paginas virtuales con marcos fisicos, permitiendo espacios mayores que la RAM."},
+{id:"M20-Paginacion",label:"20. Paginacion",group:"memVirtual",concepto:"Tecnica que divide memoria en paginas; la MMU traduce direcciones virtuales a fisicas."},
+{id:"M21-MMU",label:"21. MMU",group:"memVirtual",concepto:"Unidad de Manejo de Memoria; hardware que traduce direcciones virtuales a fisicas."},
+{id:"M22-FalloPagina",label:"22. Fallo de Pagina",group:"memVirtual",concepto:"Trap cuando un proceso referencia una pagina no presente en RAM; el SO la trae de disco."},
+{id:"M23-NumeroPagina",label:"23. Numero de Pagina",group:"memVirtual",concepto:"Parte alta de la direccion virtual usada como indice en la tabla de paginas."},
+{id:"M24-Desplazamiento",label:"24. Desplazamiento (Offset)",group:"memVirtual",concepto:"Parte baja de la direccion virtual que indica la posicion dentro de la pagina/marco."},
+{id:"M25-MarcoFisico",label:"25. Marco Fisico (Frame)",group:"memVirtual",concepto:"Bloque de memoria fisica donde se carga una pagina virtual."},
+{id:"M26-TablaPaginas",label:"26. Tabla de Paginas",group:"memVirtual",concepto:"Estructura que mapea paginas virtuales a marcos fisicos; cada entrada tiene marco, bits presente/ausente, proteccion, modificada, referenciada."},
+{id:"M27-BitPresente",label:"27. Bit Presente/Ausente",group:"memVirtual",concepto:"Si es 0, la pagina no esta en RAM y genera fallo de pagina."},
+{id:"M28-BitsProteccion",label:"28. Bits de Proteccion",group:"memVirtual",concepto:"Indican permisos de lectura, escritura y ejecucion de cada pagina."},
+{id:"M29-BitModificada",label:"29. Bit Modificada (Dirty)",group:"memVirtual",concepto:"Indica si la pagina fue escrita; si es 1, debe guardarse en disco al ser expulsada."},
+{id:"M30-BitReferenciada",label:"30. Bit Referenciada",group:"memVirtual",concepto:"Indica si la pagina fue accedida recientemente; usado por algoritmos de reemplazo."},
+{id:"M31-TLB",label:"31. TLB",group:"memVirtual",concepto:"Translation Lookaside Buffer: cache de traducciones pagina-marco para acelerar paginacion."},
+{id:"M32-FalloSuave",label:"32. Fallo Suave",group:"memVirtual",concepto:"Pagina en RAM pero no en TLB; solo actualizar TLB (muy rapido)."},
+{id:"M33-FalloDuro",label:"33. Fallo Duro",group:"memVirtual",concepto:"Pagina no esta en RAM; requiere acceso a disco (milisegundos)."},
+{id:"M34-TablasMultinivel",label:"34. Tablas Multinivel",group:"memVirtual",concepto:"Reducen memoria al crear tablas solo donde hay uso real; multiples niveles de indice."},
+{id:"M35-TablaInvertida",label:"35. Tabla Invertida",group:"memVirtual",concepto:"Una entrada por marco fisico (no por pagina virtual); ahorra espacio pero requiere TLB+hashing."},
+
+// --- ALGORITMOS DE REEMPLAZO (3.4) ---
+{id:"M36-AlgReemplazo",label:"36. Algoritmos de Reemplazo",group:"algoritmos",concepto:"Al ocurrir fallo de pagina, deciden que pagina expulsar de RAM."},
+{id:"M37-AlgOptimo",label:"37. Optimo (teorico)",group:"algoritmos",concepto:"Expulsa la pagina que tardara mas en usarse; sirve como referencia ideal inalcanzable."},
+{id:"M38-NRU",label:"38. NRU",group:"algoritmos",concepto:"No Usadas Recientemente: clasifica paginas por bits R y M en 4 clases, expulsa de la clase mas baja."},
+{id:"M39-FIFO",label:"39. FIFO",group:"algoritmos",concepto:"Expulsa la pagina mas antigua en memoria; simple pero puede expulsar paginas utiles."},
+{id:"M40-SegundaOportunidad",label:"40. Segunda Oportunidad",group:"algoritmos",concepto:"FIFO modificado: si la pagina mas antigua tiene R=1, le da otra chance poniendo R=0."},
+{id:"M41-Reloj",label:"41. Reloj (Clock)",group:"algoritmos",concepto:"Implementacion eficiente de Segunda Oportunidad usando lista circular con puntero."},
+{id:"M42-LRU",label:"42. LRU",group:"algoritmos",concepto:"Menos Recientemente Usada: expulsa la pagina no accedida por mas tiempo; buen rendimiento pero costoso."},
+{id:"M43-SimulacionLRU",label:"43. Simulacion LRU Software",group:"algoritmos",concepto:"Aproximaciones a LRU usando contadores o bits de referencia periodicos (NFU, envejecimiento)."},
+{id:"M44-ConjuntoTrabajo",label:"44. Conjunto de Trabajo",group:"algoritmos",concepto:"Working Set: paginas referenciadas en los ultimos t segundos de tiempo virtual del proceso."},
+{id:"M45-WSClock",label:"45. WSClock",group:"algoritmos",concepto:"Combina Working Set con algoritmo de Reloj; practico y eficiente."},
+
+// --- DISENO DE PAGINACION (3.5) ---
+{id:"M46-AsignacionLocal",label:"46. Asignacion Local",group:"diseno",concepto:"Elige victima solo entre paginas del proceso actual."},
+{id:"M47-AsignacionGlobal",label:"47. Asignacion Global",group:"diseno",concepto:"Elige victima en toda la memoria, entre todos los procesos."},
+{id:"M48-Sobrepaginacion",label:"48. Sobrepaginacion (Thrashing)",group:"diseno",concepto:"Cuando la suma de conjuntos de trabajo excede la RAM; el sistema pasa mas tiempo paginando que ejecutando."},
+{id:"M49-ControlCarga",label:"49. Control de Carga",group:"diseno",concepto:"Reducir procesos activos intercambiandolos a disco para liberar marcos y evitar thrashing."},
+{id:"M50-TamanoPagina",label:"50. Tamano de Pagina",group:"diseno",concepto:"Equilibrio entre tamano de tabla y fragmentacion interna; tipicamente 4KB u 8KB."},
+{id:"M51-EspacioI",label:"51. Espacio I (Instrucciones)",group:"diseno",concepto:"Espacio separado para codigo ejecutable con su propia tabla de paginas."},
+{id:"M52-EspacioD",label:"52. Espacio D (Datos)",group:"diseno",concepto:"Espacio separado para datos con su propia tabla de paginas; duplica espacio direccionable."},
+{id:"M53-PaginasCompartidas",label:"53. Paginas Compartidas",group:"diseno",concepto:"Compartir paginas de codigo entre procesos; cuidado al terminar o expulsar paginas compartidas."},
+{id:"M54-CopyOnWrite",label:"54. Copy-on-Write",group:"diseno",concepto:"Tras fork, padre e hijo comparten paginas (solo lectura); al escribir, se copia la pagina (COW)."},
+{id:"M55-BibliotecasCompartidas",label:"55. Bibliotecas Compartidas",group:"diseno",concepto:"Bibliotecas cargadas una vez y compartidas; requieren codigo independiente de posicion (PIC)."},
+{id:"M56-PIC",label:"56. PIC (Codigo Indep. Posicion)",group:"diseno",concepto:"Codigo compilado con direcciones relativas para funcionar en cualquier direccion virtual."},
+{id:"M57-MemoryMappedFiles",label:"57. Archivos Mapeados",group:"diseno",concepto:"Asignar un archivo a una region del espacio virtual; acceso como memoria, paginas bajo demanda."},
+{id:"M58-PoliticaLimpieza",label:"58. Politica de Limpieza",group:"diseno",concepto:"Decidir cuando escribir paginas sucias al disco; demonios de limpieza en segundo plano."},
+{id:"M59-InterfazMemVirtual",label:"59. Interfaz Mem. Virtual",group:"diseno",concepto:"Llamadas al sistema como brk, mmap/unmap para crecer/reducir heap y mapear regiones."},
+
+// --- IMPLEMENTACION (3.6) ---
+{id:"M60-Implementacion",label:"60. Implementacion",group:"implementacion",concepto:"El SO participa en paginacion en 4 momentos: crear, ejecutar, fallo de pagina y terminar proceso."},
+{id:"M61-ManejoFalloPagina",label:"61. Manejo Fallo de Pagina",group:"implementacion",concepto:"Hardware trap, guardar estado, identificar pagina, conseguir marco, leer pagina, actualizar tablas, reiniciar instruccion."},
+{id:"M62-RespaldoInstruccion",label:"62. Respaldo de Instruccion",group:"implementacion",concepto:"Reiniciar la instruccion que fallo; no siempre trivial con instrucciones de multiples accesos."},
+{id:"M63-BloqueoEnMemoria",label:"63. Bloqueo de Paginas (Pinning)",group:"implementacion",concepto:"Paginas que el SO fija en RAM (no paginar): buffers DMA, estructuras criticas."},
+{id:"M64-AlmacenRespaldo",label:"64. Almacen de Respaldo (Swap)",group:"implementacion",concepto:"Area de disco para guardar paginas; puede ser ubicacion fija o dinamica con mapa."},
+{id:"M65-SeparacionPoliticaMecanismo",label:"65. Separacion Politica/Mecanismo",group:"implementacion",concepto:"Principio de diseño: separar como se hace (mecanismo) de que decision tomar (politica) para modularidad."},
+
+// --- SEGMENTACION (3.7) ---
+{id:"M66-Segmentacion",label:"66. Segmentacion",group:"segmentacion",concepto:"Division del espacio en segmentos logicos (codigo, datos, pila) con base, longitud y proteccion."},
+{id:"M67-SegmentacionPura",label:"67. Segmentacion Pura",group:"segmentacion",concepto:"Cada segmento tiene base y longitud; proteccion y comparticion por segmento."},
+{id:"M68-MULTICS",label:"68. MULTICS",group:"segmentacion",concepto:"Segmentacion con paginacion: direccion de varias partes (segmento, pagina, desplazamiento), TLB y descriptor de segmento."},
+{id:"M69-Pentium",label:"69. Intel Pentium",group:"segmentacion",concepto:"Combina segmentacion y paginacion con directorio+tablas de paginas y TLB. SOs modernos usan base=0 y limite maximo (paginacion pura)."},
+
+// --- INVESTIGACION Y RESUMEN (3.8-3.9) ---
+{id:"M70-Investigacion",label:"70. Investigacion",group:"general",concepto:"Lecturas clasicas recomendadas, como trabajos de Denning sobre memoria virtual y conjuntos de trabajo."},
+{id:"M71-ResumenCap",label:"71. Resumen del Capitulo",group:"general",concepto:"Recapitula abstracciones, tecnicas de asignacion, decisiones de diseno, algoritmos de reemplazo y detalles de implementacion."}
+],
+
+  links: [
+// General
+{source:"M0-AdmMemoria",target:"M1-JerarquiaMemoria",label:"organiza"},
+{source:"M0-AdmMemoria",target:"M2-RAM",label:"administra"},
+{source:"M0-AdmMemoria",target:"M3-AdministradorMem",label:"componente"},
+{source:"M1-JerarquiaMemoria",target:"M2-RAM",label:"incluye"},
+
+// Sin Abstraccion
+{source:"M0-AdmMemoria",target:"M4-SinAbstraccion",label:"modelo basico"},
+{source:"M4-SinAbstraccion",target:"M5-MemoriaFisica",label:"accede directamente"},
+{source:"M4-SinAbstraccion",target:"M6-Corrupcion",label:"riesgo de"},
+{source:"M4-SinAbstraccion",target:"M7-UnProceso",label:"limita a"},
+{source:"M4-SinAbstraccion",target:"M8-LlavesProteccion",label:"proteccion via"},
+
+// Espacios de direcciones
+{source:"M0-AdmMemoria",target:"M9-EspacioDirecciones",label:"abstraccion clave"},
+{source:"M9-EspacioDirecciones",target:"M10-Proteccion",label:"requiere"},
+{source:"M9-EspacioDirecciones",target:"M11-Reubicacion",label:"requiere"},
+{source:"M10-Proteccion",target:"M12-RegistroBase",label:"implementada con"},
+{source:"M10-Proteccion",target:"M13-RegistroLimite",label:"implementada con"},
+{source:"M12-RegistroBase",target:"M11-Reubicacion",label:"permite"},
+{source:"M9-EspacioDirecciones",target:"M14-Swapping",label:"gestionado con"},
+{source:"M14-Swapping",target:"M15-Compactacion",label:"puede requerir"},
+{source:"M14-Swapping",target:"M11-Reubicacion",label:"requiere"},
+{source:"M14-Swapping",target:"M18-CrecimientoSegmentos",label:"maneja"},
+{source:"M9-EspacioDirecciones",target:"M16-MapaBits",label:"administrada con"},
+{source:"M9-EspacioDirecciones",target:"M17-ListasLibres",label:"administrada con"},
+
+// Memoria Virtual
+{source:"M9-EspacioDirecciones",target:"M19-MemoriaVirtual",label:"evolucion"},
+{source:"M19-MemoriaVirtual",target:"M20-Paginacion",label:"implementada con"},
+{source:"M20-Paginacion",target:"M21-MMU",label:"usa"},
+{source:"M20-Paginacion",target:"M22-FalloPagina",label:"genera"},
+{source:"M20-Paginacion",target:"M23-NumeroPagina",label:"compuesto de"},
+{source:"M20-Paginacion",target:"M24-Desplazamiento",label:"compuesto de"},
+{source:"M20-Paginacion",target:"M25-MarcoFisico",label:"mapea a"},
+{source:"M20-Paginacion",target:"M26-TablaPaginas",label:"usa"},
+{source:"M26-TablaPaginas",target:"M25-MarcoFisico",label:"contiene num. de"},
+{source:"M26-TablaPaginas",target:"M27-BitPresente",label:"incluye"},
+{source:"M26-TablaPaginas",target:"M28-BitsProteccion",label:"incluye"},
+{source:"M26-TablaPaginas",target:"M29-BitModificada",label:"incluye"},
+{source:"M26-TablaPaginas",target:"M30-BitReferenciada",label:"incluye"},
+{source:"M27-BitPresente",target:"M22-FalloPagina",label:"si 0 genera"},
+{source:"M21-MMU",target:"M22-FalloPagina",label:"provoca trap"},
+{source:"M20-Paginacion",target:"M31-TLB",label:"acelerada con"},
+{source:"M31-TLB",target:"M32-FalloSuave",label:"tipo de fallo"},
+{source:"M31-TLB",target:"M33-FalloDuro",label:"tipo de fallo"},
+{source:"M32-FalloSuave",target:"M31-TLB",label:"solo actualiza"},
+{source:"M33-FalloDuro",target:"M22-FalloPagina",label:"requiere disco"},
+{source:"M26-TablaPaginas",target:"M34-TablasMultinivel",label:"optimizada con"},
+{source:"M26-TablaPaginas",target:"M35-TablaInvertida",label:"alternativa"},
+{source:"M35-TablaInvertida",target:"M31-TLB",label:"se apoya en"},
+
+// Algoritmos de reemplazo
+{source:"M22-FalloPagina",target:"M36-AlgReemplazo",label:"invoca"},
+{source:"M36-AlgReemplazo",target:"M37-AlgOptimo",label:"incluye"},
+{source:"M36-AlgReemplazo",target:"M38-NRU",label:"incluye"},
+{source:"M36-AlgReemplazo",target:"M39-FIFO",label:"incluye"},
+{source:"M36-AlgReemplazo",target:"M42-LRU",label:"incluye"},
+{source:"M39-FIFO",target:"M40-SegundaOportunidad",label:"mejora a"},
+{source:"M40-SegundaOportunidad",target:"M41-Reloj",label:"implementado como"},
+{source:"M42-LRU",target:"M43-SimulacionLRU",label:"aproximado por"},
+{source:"M36-AlgReemplazo",target:"M44-ConjuntoTrabajo",label:"incluye"},
+{source:"M36-AlgReemplazo",target:"M45-WSClock",label:"incluye"},
+{source:"M44-ConjuntoTrabajo",target:"M45-WSClock",label:"combinado con Reloj"},
+{source:"M41-Reloj",target:"M45-WSClock",label:"base de"},
+{source:"M38-NRU",target:"M30-BitReferenciada",label:"usa"},
+{source:"M38-NRU",target:"M29-BitModificada",label:"usa"},
+{source:"M29-BitModificada",target:"M36-AlgReemplazo",label:"decide escritura"},
+
+// Diseno de paginacion
+{source:"M19-MemoriaVirtual",target:"M46-AsignacionLocal",label:"politica"},
+{source:"M19-MemoriaVirtual",target:"M47-AsignacionGlobal",label:"politica"},
+{source:"M44-ConjuntoTrabajo",target:"M46-AsignacionLocal",label:"naturalmente"},
+{source:"M47-AsignacionGlobal",target:"M48-Sobrepaginacion",label:"puede causar"},
+{source:"M48-Sobrepaginacion",target:"M49-ControlCarga",label:"solucion"},
+{source:"M49-ControlCarga",target:"M14-Swapping",label:"usa"},
+{source:"M19-MemoriaVirtual",target:"M50-TamanoPagina",label:"decision de"},
+{source:"M19-MemoriaVirtual",target:"M51-EspacioI",label:"puede separar"},
+{source:"M19-MemoriaVirtual",target:"M52-EspacioD",label:"puede separar"},
+{source:"M51-EspacioI",target:"M26-TablaPaginas",label:"tiene propia"},
+{source:"M52-EspacioD",target:"M26-TablaPaginas",label:"tiene propia"},
+{source:"M19-MemoriaVirtual",target:"M53-PaginasCompartidas",label:"permite"},
+{source:"M53-PaginasCompartidas",target:"M54-CopyOnWrite",label:"tecnica"},
+{source:"M19-MemoriaVirtual",target:"M55-BibliotecasCompartidas",label:"permite"},
+{source:"M55-BibliotecasCompartidas",target:"M56-PIC",label:"requiere"},
+{source:"M19-MemoriaVirtual",target:"M57-MemoryMappedFiles",label:"soporta"},
+{source:"M19-MemoriaVirtual",target:"M58-PoliticaLimpieza",label:"requiere"},
+{source:"M19-MemoriaVirtual",target:"M59-InterfazMemVirtual",label:"expone via"},
+
+// Implementacion
+{source:"M20-Paginacion",target:"M60-Implementacion",label:"requiere"},
+{source:"M60-Implementacion",target:"M61-ManejoFalloPagina",label:"incluye"},
+{source:"M61-ManejoFalloPagina",target:"M22-FalloPagina",label:"atiende"},
+{source:"M60-Implementacion",target:"M62-RespaldoInstruccion",label:"incluye"},
+{source:"M60-Implementacion",target:"M63-BloqueoEnMemoria",label:"incluye"},
+{source:"M60-Implementacion",target:"M64-AlmacenRespaldo",label:"incluye"},
+{source:"M64-AlmacenRespaldo",target:"M14-Swapping",label:"area de disco"},
+{source:"M60-Implementacion",target:"M65-SeparacionPoliticaMecanismo",label:"principio"},
+
+// Segmentacion
+{source:"M0-AdmMemoria",target:"M66-Segmentacion",label:"tecnica"},
+{source:"M66-Segmentacion",target:"M67-SegmentacionPura",label:"tipo"},
+{source:"M66-Segmentacion",target:"M68-MULTICS",label:"ejemplo"},
+{source:"M66-Segmentacion",target:"M69-Pentium",label:"ejemplo"},
+{source:"M68-MULTICS",target:"M20-Paginacion",label:"combina con"},
+{source:"M68-MULTICS",target:"M31-TLB",label:"acelera con"},
+{source:"M69-Pentium",target:"M20-Paginacion",label:"combina con"},
+{source:"M69-Pentium",target:"M31-TLB",label:"acelera con"},
+
+// Investigacion y Resumen
+{source:"M0-AdmMemoria",target:"M70-Investigacion",label:"seccion"},
+{source:"M0-AdmMemoria",target:"M71-ResumenCap",label:"seccion"},
+{source:"M44-ConjuntoTrabajo",target:"M70-Investigacion",label:"Denning"},
+
+// Cross-links
+{source:"M8-LlavesProteccion",target:"M10-Proteccion",label:"evolucion a"},
+{source:"M7-UnProceso",target:"M14-Swapping",label:"alternativa"},
+{source:"M50-TamanoPagina",target:"M16-MapaBits",label:"afecta tamano de"},
+{source:"M63-BloqueoEnMemoria",target:"M25-MarcoFisico",label:"fija en"},
+{source:"M57-MemoryMappedFiles",target:"M22-FalloPagina",label:"paginacion bajo demanda"},
+{source:"M58-PoliticaLimpieza",target:"M29-BitModificada",label:"monitorea"},
+{source:"M65-SeparacionPoliticaMecanismo",target:"M36-AlgReemplazo",label:"aplica a"},
+{source:"M67-SegmentacionPura",target:"M10-Proteccion",label:"provee"},
+{source:"M54-CopyOnWrite",target:"M28-BitsProteccion",label:"usa solo-lectura"},
+{source:"M56-PIC",target:"M55-BibliotecasCompartidas",label:"habilita"},
+{source:"M48-Sobrepaginacion",target:"M44-ConjuntoTrabajo",label:"excede"}
+]
+};
+
+
+// ============================================================
+//  CONFIGURACION DE COLORES POR CATEGORIA
+// ============================================================
+const groupColors = {
+  general:        {fill:"#3b82f6",stroke:"#60a5fa",bg:"rgba(59,130,246,0.12)",label:"Vision General (3.0, 3.8-3.9)"},
+  sinAbstraccion: {fill:"#ef4444",stroke:"#f87171",bg:"rgba(239,68,68,0.12)",label:"Sin Abstraccion (3.1)"},
+  espacios:       {fill:"#10b981",stroke:"#34d399",bg:"rgba(16,185,129,0.12)",label:"Espacios de Direcciones (3.2)"},
+  memVirtual:     {fill:"#8b5cf6",stroke:"#a78bfa",bg:"rgba(139,92,246,0.12)",label:"Memoria Virtual (3.3)"},
+  algoritmos:     {fill:"#f59e0b",stroke:"#fbbf24",bg:"rgba(245,158,11,0.12)",label:"Algoritmos de Reemplazo (3.4)"},
+  diseno:         {fill:"#ec4899",stroke:"#f472b6",bg:"rgba(236,72,153,0.12)",label:"Diseno de Paginacion (3.5)"},
+  implementacion: {fill:"#06b6d4",stroke:"#67e8f9",bg:"rgba(6,182,212,0.12)",label:"Implementacion (3.6)"},
+  segmentacion:   {fill:"#84cc16",stroke:"#a3e635",bg:"rgba(132,204,22,0.12)",label:"Segmentacion (3.7)"}
+};
+
+const getColor = (group) => groupColors[group] || { fill: "#6366f1", stroke: "#818cf8", bg: "rgba(99,102,241,0.12)" };
+
+// Nodos recomendados para iniciar lectura por categoria
+const startByGroup = {
+  general:"M0-AdmMemoria",
+  sinAbstraccion:"M4-SinAbstraccion",
+  espacios:"M9-EspacioDirecciones",
+  memVirtual:"M19-MemoriaVirtual",
+  algoritmos:"M36-AlgReemplazo",
+  diseno:"M46-AsignacionLocal",
+  implementacion:"M60-Implementacion",
+  segmentacion:"M66-Segmentacion"
+};
+const startNodesSet = new Set(Object.values(startByGroup));
+
+// ============================================================
+//  SETUP SVG
+// ============================================================
+const container = document.getElementById("graph-container");
+const width = container.clientWidth;
+const height = container.clientHeight;
+
+const svg = d3.select("#graph-container")
+  .append("svg")
+  .attr("width", width)
+  .attr("height", height);
+
+const defs = svg.append("defs");
+
+// Filtro glow
+defs.append("filter")
+    .attr("id", "glow")
+    .attr("x", "-50%").attr("y", "-50%")
+    .attr("width", "200%").attr("height", "200%")
+  .append("feGaussianBlur")
+    .attr("stdDeviation", "4")
+    .attr("result", "coloredBlur");
+
+const feMerge = defs.select("#glow").append("feMerge");
+feMerge.append("feMergeNode").attr("in", "coloredBlur");
+feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+// Flecha normal
+defs.append("marker")
+    .attr("id", "arrow-normal")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 22).attr("refY", 0)
+    .attr("markerWidth", 6).attr("markerHeight", 6)
+    .attr("orient", "auto")
+  .append("path")
+    .attr("d", "M0,-4L10,0L0,4")
+    .attr("fill", "#475569");
+
+// Flecha seleccionada
+defs.append("marker")
+    .attr("id", "arrow-selected")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 22).attr("refY", 0)
+    .attr("markerWidth", 8).attr("markerHeight", 8)
+    .attr("orient", "auto")
+  .append("path")
+    .attr("d", "M0,-4L10,0L0,4")
+    .attr("fill", "#a5b4fc")
+    .style("filter", "url(#glow)");
+
+const g = svg.append("g");
+const tooltip = d3.select("#tooltip");
+const selectionIndicator = d3.select("#selection-indicator");
+
+// ============================================================
+//  CALCULAR TAMANOS DE NODOS SEGUN CONEXIONES
+// ============================================================
+const nodeConnections = {};
+graph.nodes.forEach(n => nodeConnections[n.id] = 0);
+graph.links.forEach(l => {
+  nodeConnections[l.source] = (nodeConnections[l.source] || 0) + 1;
+  nodeConnections[l.target] = (nodeConnections[l.target] || 0) + 1;
+});
+
+const maxConnections = Math.max(...Object.values(nodeConnections), 1);
+const getNodeRadius = (nodeId) => {
+  const connections = nodeConnections[nodeId] || 0;
+  return 16 + (connections / maxConnections) * 14;
+};
+
+// ============================================================
+//  NAVEGACION Y ZOOM
+// ============================================================
+let currentTransform = d3.zoomIdentity;
+
+const zoom = d3.zoom()
+  .scaleExtent([0.1, 4])
+  .on("zoom", (event) => {
+    currentTransform = event.transform;
+    g.attr("transform", currentTransform);
+    updateMinimap();
+  });
+
+svg.call(zoom);
+
+function adjustZoom(factor) {
+  svg.transition().duration(300).call(zoom.scaleBy, factor);
+}
+
+function resetView() {
+  svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+}
+
+function fitToScreen() {
+  const bounds = g.node().getBBox();
+  if (bounds.width === 0 || bounds.height === 0) return;
+  const scale = 0.85 / Math.max(bounds.width / width, bounds.height / height);
+  const midX = bounds.x + bounds.width / 2;
+  const midY = bounds.y + bounds.height / 2;
+  const t = d3.zoomIdentity
+    .translate(width / 2 - scale * midX, height / 2 - scale * midY)
+    .scale(scale);
+  svg.transition().duration(750).call(zoom.transform, t);
+}
+
+// ============================================================
+//  SIMULACION DE FUERZAS
+// ============================================================
+const simulation = d3.forceSimulation(graph.nodes)
+  .force("link", d3.forceLink(graph.links).id(d => d.id).distance(160).strength(0.6))
+  .force("charge", d3.forceManyBody().strength(-900).distanceMax(900))
+  .force("center", d3.forceCenter(width / 2, height / 2).strength(0.25))
+  .force("collide", d3.forceCollide().radius(d => getNodeRadius(d.id) + 22).iterations(3))
+  .alphaDecay(0.02)
+  .velocityDecay(0.4);
+
+let selectedLink = null;
+let selectedNode = null;
+let pinnedNodes = new Set();
+
+// ============================================================
+//  DIBUJAR ENLACES
+// ============================================================
+const linkHitArea = g.append("g")
+  .selectAll("line")
+  .data(graph.links)
+  .enter()
+  .append("line")
+  .attr("class", "link-hitarea")
+  .on("click", function(event, d) {
+    event.stopPropagation();
+    selectedLink = (selectedLink === d) ? null : d;
+    updateSelection();
+  });
+
+const link = g.append("g")
+  .selectAll("line")
+  .data(graph.links)
+  .enter()
+  .append("line")
+  .attr("class", "link")
+  .attr("data-id", d => `${d.source.id || d.source}-${d.target.id || d.target}`)
+  .attr("stroke", "#334155")
+  .attr("stroke-width", 1.5)
+  .attr("stroke-opacity", 0.5)
+  .attr("marker-end", "url(#arrow-normal)")
+  .style("pointer-events", "none");
+
+// Mapa rapido id->grupo para colorear etiquetas de enlaces por seccion
+const idToGroup = new Map(graph.nodes.map(n => [n.id, n.group]));
+function isPlanificacionLink(d){
+  const s = typeof d.source === 'object' ? d.source.id : d.source;
+  const t = typeof d.target === 'object' ? d.target.id : d.target;
+  return idToGroup.get(s) === 'planificacion' || idToGroup.get(t) === 'planificacion';
+}
+
+const linkText = g.append("g")
+  .selectAll("text")
+  .data(graph.links)
+  .enter()
+  .append("text")
+  .attr("class", "link-label")
+  .attr("fill", d => isPlanificacionLink(d) ? "#a5b4fc" : null)
+  .text(d => d.label || "");
+
+// ============================================================
+//  DIBUJAR NODOS
+// ============================================================
+const node = g.append("g")
+  .selectAll("circle")
+  .data(graph.nodes)
+  .enter()
+  .append("circle")
+  .attr("class", "node")
+  .attr("r", d => getNodeRadius(d.id))
+  .attr("fill", d => getColor(d.group).fill)
+  .attr("stroke", d => getColor(d.group).stroke)
+  .attr("stroke-width", 2)
+  .attr("stroke-opacity", 0.6)
+  .on("dblclick", function(event, d) {
+    event.stopPropagation();
+    centerOnNode(d);
+  })
+  .on("click", function(event, d) {
+    event.stopPropagation();
+    selectedNode = (selectedNode === d) ? null : d;
+    updateSelection();
+    updateInfoPanel(d);
+  })
+  .on("contextmenu", function(event, d) {
+    event.preventDefault();
+    togglePin(d);
+  })
+  .call(d3.drag()
+    .on("start", dragstarted)
+    .on("drag", dragged)
+    .on("end", dragended));
+
+const label = g.append("g")
+  .selectAll("text")
+  .data(graph.nodes)
+  .enter()
+  .append("text")
+  .attr("class", "node-label")
+  .text(d => d.label || d.id)
+  .attr("dx", d => getNodeRadius(d.id) + 5)
+  .attr("dy", 4);
+
+const pinIcon = g.append("g")
+  .selectAll("text")
+  .data(graph.nodes)
+  .enter()
+  .append("text")
+  .attr("class", "pin-icon")
+  .text("\u{1F4CC}")
+  .style("opacity", 0);
+
+const startIcon = g.append("g")
+  .selectAll("text")
+  .data(graph.nodes.filter(n => startNodesSet.has(n.id)))
+  .enter()
+  .append("text")
+  .attr("class", "start-icon")
+  .text("\u25B6"); /* ▶ */
+
+// ============================================================
+//  TOOLTIPS
+// ============================================================
+node.on("mouseover", (event, d) => {
+  const colors = getColor(d.group);
+  const connections = nodeConnections[d.id] || 0;
+  tooltip
+    .style("opacity", 1)
+    .style("border-left-color", colors.fill)
+    .html(`
+      <b style="color: ${colors.stroke};">${d.label || d.id}</b>
+      <div style="color: #94a3b8; line-height: 1.6;">${d.concepto || ""}</div>
+      <div style="color: #475569; margin-top: 6px; font-size: 10px;">
+        ${connections} conexion${connections !== 1 ? 'es' : ''} &bull; ${groupColors[d.group]?.label || d.group}
+      </div>
+      ${startNodesSet.has(d.id) ? `<div style="margin-top:6px;color:#facc15;font-size:11px;font-weight:700;">Inicio sugerido de esta sección</div>` : ``}
+    `)
+    .style("left", (event.pageX + 15) + "px")
+    .style("top", (event.pageY + 15) + "px");
+
+  d3.select(event.currentTarget)
+    .transition().duration(200)
+    .attr("r", getNodeRadius(d.id) * 1.3)
+    .attr("stroke-opacity", 1);
+})
+.on("mousemove", (event) => {
+  tooltip.style("left", (event.pageX + 15) + "px").style("top", (event.pageY + 15) + "px");
+})
+.on("mouseout", (event, d) => {
+  tooltip.style("opacity", 0);
+  d3.select(event.currentTarget)
+    .transition().duration(200)
+    .attr("r", getNodeRadius(d.id))
+    .attr("stroke-opacity", 0.6);
+});
+
+// ============================================================
+//  FUNCIONES DE UTILIDAD
+// ============================================================
+function updateSelection() {
+  link
+    .attr("stroke", d => d === selectedLink ? "#a5b4fc" : "#334155")
+    .attr("stroke-width", d => d === selectedLink ? 3 : 1.5)
+    .attr("stroke-opacity", d => d === selectedLink ? 1 : 0.5)
+    .attr("marker-end", d => d === selectedLink ? "url(#arrow-selected)" : "url(#arrow-normal)")
+    .classed("selected", d => d === selectedLink)
+    .style("filter", d => d === selectedLink ? "url(#glow)" : "none");
+
+  linkText.classed("selected", d => d === selectedLink);
+
+  node
+    .attr("stroke-width", d => d === selectedNode ? 4 : 2)
+    .attr("stroke-opacity", d => d === selectedNode ? 1 : 0.6)
+    .style("filter", d => d === selectedNode ? "url(#glow)" : "none");
+
+  label
+    .attr("font-weight", d => d === selectedNode ? "800" : "600")
+    .attr("font-size", d => d === selectedNode ? "13px" : "11px")
+    .style("filter", d => d === selectedNode ? "url(#glow)" : "none");
+
+  if (selectedLink) {
+    const src = selectedLink.source.label || selectedLink.source.id;
+    const tgt = selectedLink.target.label || selectedLink.target.id;
+    selectionIndicator
+      .classed("visible", true)
+      .text(`"${selectedLink.label || 'Relacion'}" (${src} \u2192 ${tgt})`);
+  } else {
+    selectionIndicator.classed("visible", false);
+  }
+}
+
+function clearSelection() {
+  selectedLink = null;
+  selectedNode = null;
+  updateSelection();
+  document.getElementById('infoPanel').innerHTML =
+    '<strong>Interaccion:</strong> Doble-click para centrar &bull; Click para seleccionar &bull; Click-derecho para fijar &bull; Arrastra para mover &bull; Rueda para zoom';
+  document.getElementById('infoPanel').classList.remove('hidden');
+}
+
+function updateInfoPanel(nd) {
+  if (!nd) return;
+  const colors = getColor(nd.group);
+  document.getElementById('infoPanel').innerHTML = `
+    <strong style="color:${colors.stroke};">${nd.label || nd.id}</strong><br/>
+    <span style="color: #94a3b8;">${nd.concepto || ''}</span><br/>
+    <small style="color: #475569;">${nodeConnections[nd.id] || 0} conexiones &bull; Categoria: ${groupColors[nd.group]?.label || nd.group}</small>
+  `;
+  document.getElementById('infoPanel').classList.remove('hidden');
+}
+
+function centerOnNode(d) {
+  const scale = 1.8;
+  const t = d3.zoomIdentity
+    .translate(width / 2 - scale * d.x, height / 2 - scale * d.y)
+    .scale(scale);
+  svg.transition().duration(750).call(zoom.transform, t);
+}
+
+function togglePin(d) {
+  if (pinnedNodes.has(d.id)) {
+    pinnedNodes.delete(d.id);
+    d.fx = null;
+    d.fy = null;
+  } else {
+    pinnedNodes.add(d.id);
+    d.fx = d.x;
+    d.fy = d.y;
+  }
+  updatePins();
+}
+
+function updatePins() {
+  node.classed("pinned", d => pinnedNodes.has(d.id));
+  pinIcon.style("opacity", d => pinnedNodes.has(d.id) ? 1 : 0);
+}
+
+function autoOrganize() {
+  simulation.alpha(1).restart();
+  pinnedNodes.clear();
+  graph.nodes.forEach(n => { n.fx = null; n.fy = null; });
+  updatePins();
+}
+
+// ============================================================
+//  BUSCADOR
+// ============================================================
+const searchInput = document.getElementById("searchInput");
+const searchResults = document.getElementById("searchResults");
+
+function renderSearchResults() {
+  const query = searchInput.value.toLowerCase().trim();
+  if (query.length < 1) {
+    searchResults.classList.remove("visible");
+    return;
+  }
+
+  let matches = graph.nodes.filter(n => {
+    const lbl = (n.label || "").toLowerCase();
+    const id = (n.id || "").toLowerCase();
+    const con = (n.concepto || "").toLowerCase();
+    if (/^\d+$/.test(query)) return id.startsWith(query + "-") || lbl.startsWith(query + ".");
+    return lbl.includes(query) || id.includes(query) || con.includes(query);
+  }).slice(0, 12);
+
+  if (matches.length > 0) {
+    const countHtml = `<div style="color: #475569; font-size: 11px; padding: 8px 14px; border-bottom: 1px solid rgba(99,102,241,0.1);">
+      ${matches.length} resultado${matches.length !== 1 ? 's' : ''}
+    </div>`;
+
+    searchResults.innerHTML = countHtml + matches.map(n => {
+      const colors = getColor(n.group);
+      return `
+        <div class="search-result-item" data-id="${n.id}">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors.fill};margin-right:8px;vertical-align:middle;"></span>
+          <strong style="color: #e2e8f0;">${n.label}</strong>
+          ${n.concepto ? `<br/><small style="color: #64748b; margin-top: 2px; display: block; padding-left: 16px;">${n.concepto.substring(0, 80)}...</small>` : ''}
+        </div>
+      `;
+    }).join('');
+    searchResults.classList.add("visible");
+  } else {
+    searchResults.innerHTML = `<div class="search-result-item" style="text-align: center; color: #64748b;"><em>Sin resultados para "${query}"</em></div>`;
+    searchResults.classList.add("visible");
+  }
+
+  setTimeout(() => {
+    searchResults.querySelectorAll('.search-result-item[data-id]').forEach(item => {
+      item.addEventListener('click', function() {
+        const nd = graph.nodes.find(n => n.id === this.dataset.id);
+        if (nd) {
+          centerOnNode(nd);
+          searchInput.value = '';
+          searchResults.classList.remove("visible");
+        }
+      });
+    });
+  }, 30);
+}
+
+searchInput.addEventListener("input", renderSearchResults);
+searchInput.addEventListener("keypress", (e) => {
+  if (e.key === "Enter") {
+    const first = searchResults.querySelector('.search-result-item[data-id]');
+    if (first) first.click();
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-container')) searchResults.classList.remove("visible");
+});
+
+// ============================================================
+//  LEYENDA DINAMICA
+// ============================================================
+const legend = d3.select("#legend");
+legend.append("h4").text("Categorias");
+
+const activeFilters = new Set(Object.keys(groupColors));
+
+function updateCategoryFilters(categoryKey, isActive) {
+  if (isActive) activeFilters.add(categoryKey);
+  else activeFilters.delete(categoryKey);
+
+  const allActive = activeFilters.size === Object.keys(groupColors).length;
+  const getGroup = (ref) => typeof ref === 'string' ? graph.nodes.find(n => n.id === ref)?.group : ref.group;
+  const getId = (ref) => typeof ref === 'string' ? ref : ref.id;
+
+  // Encontrar nodos conectados a las categorias activas
+  const connectedNodeIds = new Set();
+  if (!allActive) {
+    graph.links.forEach(l => {
+      const srcGroup = getGroup(l.source);
+      const tgtGroup = getGroup(l.target);
+      const srcActive = activeFilters.has(srcGroup);
+      const tgtActive = activeFilters.has(tgtGroup);
+      if (srcActive && !tgtActive) connectedNodeIds.add(getId(l.target));
+      if (tgtActive && !srcActive) connectedNodeIds.add(getId(l.source));
+    });
+  }
+
+  node.style("opacity", d => {
+    if (activeFilters.has(d.group)) return 1;
+    if (connectedNodeIds.has(d.id)) return 0.35;
+    return 0.08;
+  }).style("pointer-events", d => {
+    if (activeFilters.has(d.group) || connectedNodeIds.has(d.id)) return "auto";
+    return "none";
+  });
+
+  label.style("opacity", d => {
+    if (activeFilters.has(d.group)) return 1;
+    if (connectedNodeIds.has(d.id)) return 0.35;
+    return 0.08;
+  });
+
+  pinIcon.style("opacity", d => activeFilters.has(d.group) && pinnedNodes.has(d.id) ? 1 : 0);
+
+  link.style("opacity", l => {
+    const srcActive = activeFilters.has(getGroup(l.source));
+    const tgtActive = activeFilters.has(getGroup(l.target));
+    if (srcActive && tgtActive) return 0.5;
+    if (srcActive || tgtActive) return 0.25;
+    return 0.03;
+  });
+  linkText.style("opacity", l => {
+    const srcActive = activeFilters.has(getGroup(l.source));
+    const tgtActive = activeFilters.has(getGroup(l.target));
+    if (srcActive && tgtActive) return 0.7;
+    if (srcActive || tgtActive) return 0.4;
+    return 0.03;
+  });
+
+  updateStatsPanel();
+}
+
+Object.entries(groupColors).forEach(([key, value]) => {
+  const item = legend.append("div")
+    .attr("class", "legend-item")
+    .style("opacity", 1)
+    .on("click", function() {
+      const isActive = activeFilters.has(key);
+      updateCategoryFilters(key, !isActive);
+      d3.select(this).style("opacity", isActive ? 0.35 : 1);
+    });
+
+  item.append("div")
+    .attr("class", "legend-color")
+    .style("background", value.fill);
+
+  item.append("span")
+    .attr("class", "legend-label")
+    .text(value.label);
+
+  const startId = startByGroup[key];
+  if (startId) {
+    const nd = graph.nodes.find(n => n.id === startId);
+    const startText = nd ? nd.label : startId;
+    item.append("span")
+      .attr("class", "legend-start")
+      .text(`Inicio: ${startText}`)
+      .on("click", function(event) {
+        event.stopPropagation();
+        const nodeRef = graph.nodes.find(n => n.id === startId);
+        if (nodeRef) centerOnNode(nodeRef);
+      });
+  }
+});
+
+setTimeout(() => { document.getElementById("infoPanel").classList.add("hidden"); }, 5000);
+
+// ============================================================
+//  MINIMAPA
+// ============================================================
+const minimapSvg = d3.select("#minimap");
+const minimapG = minimapSvg.append("g");
+const minimapScale = 0.12;
+
+const minimapLinks = minimapG.append("g")
+  .selectAll("line").data(graph.links).enter()
+  .append("line").attr("stroke", "#334155").attr("stroke-width", 0.3);
+
+const minimapNodes = minimapG.append("g")
+  .selectAll("circle").data(graph.nodes).enter()
+  .append("circle").attr("r", 1.5).attr("fill", d => getColor(d.group).fill);
+
+const minimapViewport = minimapSvg.append("rect").attr("class", "minimap-viewport");
+
+function updateMinimap() {
+  const k = currentTransform.k;
+  minimapViewport
+    .attr("x", (-currentTransform.x / k) * minimapScale)
+    .attr("y", (-currentTransform.y / k) * minimapScale)
+    .attr("width", (width / k) * minimapScale)
+    .attr("height", (height / k) * minimapScale);
+}
+
+minimapViewport.call(d3.drag().on("drag", function(event) {
+  const x = event.x / minimapScale;
+  const y = event.y / minimapScale;
+  const t = d3.zoomIdentity.translate(-x * currentTransform.k, -y * currentTransform.k).scale(currentTransform.k);
+  svg.call(zoom.transform, t);
+}));
+
+// ============================================================
+//  SIMULACION TICK
+// ============================================================
+simulation.on("tick", () => {
+  link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+  linkHitArea.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+             .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+  linkText.attr("x", d => (d.source.x + d.target.x) / 2)
+          .attr("y", d => (d.source.y + d.target.y) / 2);
+  node.attr("cx", d => d.x).attr("cy", d => d.y);
+  label.attr("x", d => d.x).attr("y", d => d.y);
+  pinIcon.attr("x", d => d.x - 5).attr("y", d => d.y - getNodeRadius(d.id) - 5);
+  startIcon.attr("x", d => d.x + getNodeRadius(d.id) + 6)
+           .attr("y", d => d.y - 6);
+  minimapNodes.attr("cx", d => d.x * minimapScale).attr("cy", d => d.y * minimapScale);
+  minimapLinks.attr("x1", d => d.source.x * minimapScale).attr("y1", d => d.source.y * minimapScale)
+              .attr("x2", d => d.target.x * minimapScale).attr("y2", d => d.target.y * minimapScale);
+});
+
+// Encadre robusto: aplicar varias veces y al finalizar la simulación
+setTimeout(fitToScreen, 800);
+setTimeout(fitToScreen, 2200);
+simulation.on("end", fitToScreen);
+window.addEventListener("load", fitToScreen);
+
+// ============================================================
+//  ARRASTRE DE NODOS
+// ============================================================
+function dragstarted(event, d) {
+  if (!event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x; d.fy = d.y;
+}
+function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+function dragended(event, d) {
+  if (!event.active) simulation.alphaTarget(0);
+  if (!pinnedNodes.has(d.id)) { d.fx = null; d.fy = null; }
+}
+
+svg.on("click", function(event) {
+  if (event.target === this || event.target.tagName === 'svg') clearSelection();
+});
+
+// ============================================================
+//  MODAL DE AYUDA Y ATAJOS
+// ============================================================
+function toggleHelpModal() {
+  const modal = document.getElementById('helpModal');
+  modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
+}
+
+document.getElementById('helpModal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+
+document.addEventListener('keydown', function(e) {
+  if (document.activeElement.tagName === 'INPUT') return;
+  if (e.key === '?' || e.key === '\u00BF') toggleHelpModal();
+  else if (e.key === 'r' || e.key === 'R') autoOrganize();
+  else if (e.key === 'f' || e.key === 'F') fitToScreen();
+  else if (e.key === 'Escape') {
+    searchInput.value = '';
+    searchResults.classList.remove("visible");
+    clearSelection();
+    document.getElementById('helpModal').style.display = 'none';
+  }
+});
+
+// ============================================================
+//  PANEL DE ESTADISTICAS
+// ============================================================
+function updateStatsPanel() {
+  const visibleCount = graph.nodes.filter(n => activeFilters.has(n.group)).length;
+  document.getElementById('statsContent').innerHTML = `
+    <strong>Nodos:</strong> ${visibleCount}/${graph.nodes.length}<br/>
+    <strong>Enlaces:</strong> ${graph.links.length}<br/>
+    <strong>Categorias:</strong> ${activeFilters.size}/${Object.keys(groupColors).length}
+  `;
+}
+
+setTimeout(updateStatsPanel, 500);
+setTimeout(fitToScreen, 1500);
+</script>
+</body>
+</html>
